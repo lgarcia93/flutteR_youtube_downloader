@@ -1,12 +1,12 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:youtube_downloader_flutter/video_info_model.dart';
 
 class ApiController {
   final Dio dio = Dio();
 
-  Future<List<VideoInfoModel>> fetchVideoInfo(String link) async {
+  Future<List<VideoInfoModel>> fetchVideoInfo({
+    required String link,
+  }) async {
     final response = await dio.get(
       "http://localhost:5000/video_info",
       queryParameters: {
@@ -26,18 +26,16 @@ class ApiController {
     return singleInfo.values.map((e) => e).toList();
   }
 
-  Future<void> downlioadVideo(String link) async {
-    final response = await dio.post(
+  Future<void> downlioadVideo({
+    required String link,
+    required String sessionId,
+  }) async {
+    final response = await dio.get(
       "http://localhost:5000/download_video",
-      options: Options(
-        receiveTimeout: 1000000,
-        contentType: "application/json",
-      ),
-      data: jsonEncode(
-        {
-          'link': link,
-        },
-      ),
+      queryParameters: {
+        'link': link,
+        'sessionId': sessionId,
+      },
     );
   }
 }

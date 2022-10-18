@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:youtube_downloader_flutter/progress_data_info.dart';
 import 'package:youtube_downloader_flutter/video_info_model.dart';
 
 class VideoInfo extends StatelessWidget {
   final List<VideoInfoModel> videoInfo;
   final void Function(VideoInfoModel) onDownloadPressed;
+  final void Function(String) onGetVideoPressed;
+
+  final Map<String, ProgressDataInfo> progressMap;
 
   const VideoInfo({
     Key? key,
     required this.videoInfo,
     required this.onDownloadPressed,
+    required this.progressMap,
+    required this.onGetVideoPressed,
   }) : super(key: key);
 
   @override
@@ -53,10 +59,13 @@ class VideoInfo extends StatelessWidget {
           Column(
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: videoInfo
-                .map(
-              (e) => Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            children: videoInfo.map((e) {
+              if (progressMap[e.qualityLabel]?.status ==
+                  DownloadStatus.finished) {
+                print(progressMap[e.qualityLabel]?.downloadLink);
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(
@@ -69,16 +78,42 @@ class VideoInfo extends StatelessWidget {
                   const SizedBox(
                     width: 15,
                   ),
-                  ElevatedButton(
-                    onPressed: () {
-                      onDownloadPressed(e);
-                    },
-                    child: const Text('Download'),
-                  ),
+                  if (progressMap[e.qualityLabel] == null)
+                    Container(
+                      width: 130,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          onDownloadPressed(e);
+                        },
+                        child: const Text('Download'),
+                      ),
+                    ),
+                  if (progressMap[e.qualityLabel]?.status ==
+                      DownloadStatus.started)
+                    SizedBox(
+                      width: 130,
+                      child: LinearProgressIndicator(
+                        minHeight: 10,
+                        color: Colors.green,
+                        backgroundColor: Colors.black,
+                        value: progressMap[e.qualityLabel]?.progress ?? 0,
+                      ),
+                    ),
+                  if (progressMap[e.qualityLabel]?.status ==
+                      DownloadStatus.finished)
+                    SizedBox(
+                      width: 130,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          onGetVideoPressed(
+                              progressMap[e.qualityLabel]?.downloadLink ?? '');
+                        },
+                        child: const Text('Get the video'),
+                      ),
+                    ),
                 ],
-              ),
-            )
-                .fold(
+              );
+            }).fold(
               <Widget>[],
               (previousValue, element) => [
                 ...previousValue,

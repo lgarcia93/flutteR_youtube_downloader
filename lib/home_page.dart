@@ -1,11 +1,20 @@
+import 'dart:convert';
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:youtube_downloader_flutter/api_controller.dart';
+import 'package:youtube_downloader_flutter/progress_data_info.dart';
 import 'package:youtube_downloader_flutter/video_info.dart';
 import 'package:youtube_downloader_flutter/video_info_model.dart';
+import 'package:youtube_downloader_flutter/websocket/client_messages.dart';
+import 'package:youtube_downloader_flutter/websocket/server_messages.dart';
 
+/*
+* flutter run -d chrome --web-renderer html // to run the app
+
+flutter build web --web-renderer html --release // to generate a production build
+* */
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
 
@@ -20,7 +29,11 @@ class _HomePageState extends State<HomePage> {
   bool isLoading = false;
   List<VideoInfoModel> videoInfo = [];
 
+  Map<String, ProgressDataInfo> progressMap = {};
+
   late final WebSocketChannel channel;
+  String sessionId = "";
+  double progress = 0.0;
 
   @override
   void initState() {
@@ -31,7 +44,72 @@ class _HomePageState extends State<HomePage> {
     );
 
     channel.stream.listen((event) {
-      print(event);
+      var serverMessage = ServerMessage.fromMap(jsonDecode(event));
+
+      switch (serverMessage.messageType) {
+        case ServerMessageType.sessionCreated:
+          var sessionCreated = OnSessionCreatedMessage.fromMap(
+            jsonDecode(
+              serverMessage.messageBody,
+            ),
+          );
+
+          setState(() {
+            sessionId = sessionCreated.sessionId.toString();
+          });
+          break;
+        case ServerMessageType.downloadStarted:
+          var downloadStarted = OnDownloadStartedMessage.fromMap(
+            jsonDecode(
+              serverMessage.messageBody,
+            ),
+          );
+
+          break;
+        case ServerMessageType.downloadProgress:
+          var downloadProgress = OnDownloadProgressMessage.fromMap(
+            jsonDecode(
+              serverMessage.messageBody,
+            ),
+          );
+
+          if (progressMap[downloadProgress.qualityLabel]?.status ==
+              DownloadStatus.finished) {
+            break;
+          }
+
+          setState(() {
+            progressMap[downloadProgress.qualityLabel] = ProgressDataInfo(
+              status: DownloadStatus.started,
+              downloadLink: '',
+              progress: downloadProgress.progress,
+            );
+          });
+          break;
+        case ServerMessageType.downloadFinished:
+          var downloadFinished = OnDownloadFinishedMessage.fromMap(
+            jsonDecode(
+              serverMessage.messageBody,
+            ),
+          );
+
+          setState(() {
+            progressMap[downloadFinished.qualityLabel] = ProgressDataInfo(
+              status: DownloadStatus.finished,
+              downloadLink: downloadFinished.downloadLink,
+              progress: 1.0,
+            );
+
+            progressMap = <String, ProgressDataInfo>{}..addAll(progressMap);
+
+            print('Download finished');
+            print(downloadFinished.qualityLabel);
+            print(progressMap[downloadFinished.qualityLabel]?.downloadLink);
+            print(progressMap[downloadFinished.qualityLabel]?.status);
+          });
+
+          break;
+      }
     });
   }
 
@@ -48,6 +126,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(
                 height: 200,
               ),
+              Text(progress.toString()),
               const Text(
                 'Youtube downloader',
                 style: TextStyle(
@@ -87,12 +166,12 @@ class _HomePageState extends State<HomePage> {
                             setState(() {
                               isLoading = true;
                             });
-                            videoInfo = await apiController
-                                .fetchVideoInfo(_controller.text);
+                            videoInfo = await apiController.fetchVideoInfo(
+                              link: _controller.text,
+                            );
 
                             setState(() {
                               isLoading = false;
-                              videoInfo;
                             });
                           },
                           child: const Text('Search'),
@@ -107,18 +186,32 @@ class _HomePageState extends State<HomePage> {
               if (videoInfo.isNotEmpty)
                 Expanded(
                   child: VideoInfo(
-                    onDownloadPressed: (videoInfo) {
-                      var finalLink =
-                          'http://localhost:5000/download_video?link=${videoInfo.link}';
-
-                      html.AnchorElement anchorElement = html.AnchorElement(
-                        href: finalLink,
+                    progressMap: progressMap,
+                    onDownloadPressed: (videoInfo) async {
+                      var startDownladMessage = StartDownloadMessage(
+                        link: videoInfo.link,
+                        qualityLabel: videoInfo.qualityLabel,
                       );
-                      anchorElement.target = "_blank";
-                      anchorElement.download = finalLink;
-                      anchorElement.click();
+
+                      var message = ClientMessage(
+                        messageeType: ClientMessageeType.startDownload,
+                        messageBody: jsonEncode(startDownladMessage.toJson()),
+                      );
+
+                      channel.sink.add(jsonEncode(message.toJson()));
                     },
                     videoInfo: videoInfo,
+                    onGetVideoPressed: (downloadLink) {
+                      if (downloadLink.isEmpty) {
+                        return;
+                      }
+
+                      var finalLink =
+                          'http://localhost:5000/download_video?link=$downloadLink&sessionId=$sessionId';
+                      html.AnchorElement(href: finalLink)
+                        ..setAttribute('download', 'downloaded_file_name.pdf')
+                        ..click();
+                    },
                   ),
                 ),
             ],
